@@ -10,15 +10,15 @@ Requires:
 
 TODO:
 -----
-1. Clean up code
-2. Add velocity increases based on impact locations
-3. Add UI System
-..* Add menu system
-..* Better define HUD elements (score, zones, etc.)
-4. Better Encapsulation
-..* Physics
-..* Controls
-..* Events
+* Clean up code
+* Add velocity increases based on impact locations
+* Add UI System
+  * Add menu system
+  * Better define HUD elements (score, zones, etc.)
+* Better Encapsulation
+  * Physics
+  * Controls
+  * Events
 
 Licensing:
 -----------
