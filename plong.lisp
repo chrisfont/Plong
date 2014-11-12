@@ -12,15 +12,35 @@
 (defvar *width* 600)
 (defvar *height* 400)
 
+(defvar *court-width*  100)
+(defvar *court-height* 100)
+
 (defvar *player-height* 40)
 (defvar *player-width*  2)
 
-(defvar *ball-width* 2)
+(defvar *ball-width*  2)
 (defvar *ball-height* 2)
+
+(defvar *ball-y-vel-inc* 0.1)
+(defvar *ball-x-vel-inc* 0.1)
+
+(defvar *ball-vel-default* 0.5)
 
 (defvar *fps*    0)
 (defvar *frames* 0)
 (defvar *time*   0)
+
+(defun get-court-left ()
+  (- (/ *court-width* 2)))
+
+(defun get-court-right ()
+  (/ *court-width* 2))
+
+(defun get-court-bot ()
+  (- (/ *court-height* 2)))
+
+(defun get-court-top ()
+  (/ *court-height* 2))
 
 (defstruct player
   (score 0 :type integer)
@@ -35,10 +55,13 @@
 
 (defvar *max-score* 10)
 
-(defvar *player-one* (make-player :x-pos (+ -50 (/ *player-width* 2))))
-(defvar *player-two* (make-player :x-pos (- 50  (/ *player-width* 2))))
+(defvar *player-one* (make-player
+                      :x-pos (+ (get-court-left) (/ *player-width* 2))))
 
-(defvar *ball* (make-ball :x-vel 1.0 :y-vel 0.0))
+(defvar *player-two* (make-player
+                      :x-pos (- (get-court-right) (/ *player-width* 2))))
+
+(defvar *ball* (make-ball))
 
 (defun draw-ball (ball)
   (let ((x-start (- (ball-x-pos ball)
@@ -65,12 +88,12 @@
 ;; TODO: Fix error where going off board locks your pad
 (defun player-up (player)
   (let ((y-top (+ (player-y-pos player) (/ *player-height* 2))))
-    (when (> 50 y-top)
+    (when (> (get-court-top) y-top)
       (setf (player-y-pos player) (+ (player-y-pos player) 2)))))
 
 (defun player-down (player)
   (let ((y-bot (- (player-y-pos player) (/ *player-height* 2))))
-    (when (< -50 y-bot)
+    (when (< (get-court-bot) y-bot)
       (setf (player-y-pos player) (- (player-y-pos player) 2)))))
 
 (glfw:def-key-callback key-callback (window key scancode action mod-keys)
@@ -96,12 +119,12 @@
   (setf (ball-y-pos ball) 0.0)
   (setf (ball-x-vel ball)
         (if (< 0 (ball-x-vel ball))
-            (- 0.5)
-            0.5))
+            (- *ball-vel-default*)
+            *ball-vel-default*))
   (setf (ball-y-vel ball)
         (if (< 0 (ball-y-vel ball))
-            (- 0.5)
-            0.5)))
+            (- *ball-vel-default*)
+            *ball-vel-default*)))
 
 (defun update ()
   (when (>= (player-score *player-one*) *max-score*)
@@ -137,28 +160,30 @@
         (+ (ball-x-pos ball) (ball-x-vel ball)))
 
   ;; Detect if we collide with wall
-  (when (and (> -50 (ball-y-pos ball))
+  (when (and (> (get-court-bot) (ball-y-pos ball))
              (> 0 (ball-y-vel ball)))
     (setf (ball-y-vel ball) (- (ball-y-vel ball))))
-  (when (and (< 50 (ball-y-pos ball))
+  (when (and (< (get-court-top) (ball-y-pos ball))
              (< 0 (ball-y-vel ball)))
     (setf (ball-y-vel ball) (- (ball-y-vel ball))))
 
   ;; Detect if we collide with player
   (when (player-collision-p ball *player-one*)
     (if (> 0 (ball-x-vel ball))
-        (setf (ball-x-vel ball) (- (- (ball-x-vel ball) 0.1)))))
+        (setf (ball-x-vel ball)
+              (- (- (ball-x-vel ball) *ball-x-vel-inc*)))))
 
   (when (player-collision-p ball *player-two*)
     (if (< 0 (ball-x-vel ball))
-        (setf (ball-x-vel ball) (- (+ (ball-x-vel ball) 0.1)))))
+        (setf (ball-x-vel ball)
+              (- (+ (ball-x-vel ball) *ball-x-vel-inc*)))))
 
   ;; Detect if we score
-  (when (and (> -50 (ball-x-pos ball))
+  (when (and (> (get-court-bot) (ball-x-pos ball))
              (> 0 (ball-x-vel ball)))
     (reset-ball ball)
     (incf (player-score *player-two*)))
-  (when (and (< 50 (ball-x-pos ball))
+  (when (and (< (get-court-top) (ball-x-pos ball))
              (< 0 (ball-x-vel ball)))
     (reset-ball ball)
     (incf (player-score *player-one*))))
@@ -174,17 +199,25 @@
 
 (defun draw-score (p1 p2)
   (gl-print (format nil "~d" p1)
-            :x -25 :y -40)
+            :x (/ (get-court-left) 2)
+            :y (+ (/ (get-court-bot) 2) (/ (get-court-bot) 4)))
   (gl-print (format nil "~d" p2)
-            :x 25 :y -40))
+            :x (/ (get-court-right) 2)
+            :y (+ (/ (get-court-bot) 2) (/ (get-court-bot) 4))))
 
 (defun draw-field ()
   (gl:color 0 1 0)
-  (gl:rect -50 -50 50 50)
+  (gl:rect (get-court-left) (get-court-bot) (get-court-right) (get-court-top))
   (gl:color 0.8 0.8 0.8)
-  (gl:rect -26 -26 26 26)
+  (gl:rect (- (/ (get-court-left)  2) 1)
+           (- (/ (get-court-bot)   2) 1)
+           (+ (/ (get-court-right) 2) 1)
+           (+ (/ (get-court-top)   2) 1))
   (gl:color 0.25 1 0.5)
-  (gl:rect -25 -25 25 25))
+  (gl:rect (/ (get-court-left)  2)
+           (/ (get-court-bot)   2)
+           (/ (get-court-right) 2)
+           (/ (get-court-top)   2)))
 
 (defun draw-in-play ()
   (gl:color 1 1 1)
@@ -194,7 +227,7 @@
 
 (defun draw-victory ()
   (gl-print (format nil *victory*)
-            :x -25))
+            :x (/ (get-court-left) 2)))
 
 (defmethod render ()
   "Render field in depth order"
@@ -210,14 +243,15 @@
      (player-score *player-two*))
     (when *debug*
       (gl-print (format nil "FPS: ~$" *fps*)
-                :x -25 :y -25
+                :x (/ (get-court-left) 2) :y (/ (get-court-bot) 2)
                 :g 0 :b 0))))
 
 (defmethod set-viewport (width height)
   (gl:viewport 0 0 width height)
   (gl:matrix-mode :projection)
   (gl:load-identity)
-  (gl:ortho -50 50 -50 50 -1 1)
+  (gl:ortho (get-court-left) (get-court-right)
+            (get-court-bot)  (get-court-top) -1 1)
   (gl:matrix-mode :modelview)
   (gl:load-identity))
 
@@ -232,8 +266,8 @@
   (setf (player-score *player-two*) 0)
   (setf (ball-x-pos *ball*)         0.0)
   (setf (ball-y-pos *ball*)         0.0)
-  (setf (ball-x-vel *ball*)         0.5)
-  (setf (ball-y-vel *ball*)         0.5))
+  (setf (ball-x-vel *ball*)         *ball-vel-default*)
+  (setf (ball-y-vel *ball*)         *ball-vel-default*))
 
 (defun update-time ()
   (when (< 1 (- (glfw:get-time) *time*))
