@@ -152,6 +152,36 @@
          (and (<= x-left  x)
               (>= x-right x)))))
 
+(defun ball-vel-update (ball player)
+  "Detects which portion of the player pad is being impacted by the ball to give an appropriate"
+  (let ((up-top   (+ (player-y-pos player) (/ *player-height* 2)))
+        (up-bot   (+ (player-y-pos player) (/ *player-height* 4)))
+        (down-bot (- (player-y-pos player) (/ *player-height* 2)))
+        (down-top (- (player-y-pos player) (/ *player-height* 4)))
+        (y        (ball-y-pos ball))
+        (x-inc    (ball-x-vel ball))
+        (y-inc    (ball-y-vel ball)))
+    (when (and (< up-top y)
+               (> up-bot y))
+      (setf y-inc (+ y-inc *ball-y-vel-inc*)))
+    (when (and (< down-top y)
+               (> down-bot y))
+      (setf y-inc (- y-inc *ball-y-vel-inc*)))
+    (when (and (> up-bot y)
+               (< down-top y))
+      (setf x-inc
+            (if (< 0 x-inc)
+                (+ x-inc *ball-x-vel-inc*)
+                (- x-inc *ball-x-vel-inc*))))
+    (when (and (> 0 x-inc)
+               (eq *player-one* player))
+      (setf x-inc (- x-inc)))
+    (when (and (< 0 x-inc)
+               (eq *player-two* player))
+      (setf x-inc (- x-inc)))
+    (setf (ball-x-vel ball) x-inc)
+    (setf (ball-y-vel ball) y-inc)))
+
 (defun update-ball (ball)
   ;; Update ball position
   (setf (ball-y-pos ball)
@@ -169,14 +199,9 @@
 
   ;; Detect if we collide with player
   (when (player-collision-p ball *player-one*)
-    (if (> 0 (ball-x-vel ball))
-        (setf (ball-x-vel ball)
-              (- (- (ball-x-vel ball) *ball-x-vel-inc*)))))
-
+    (ball-vel-update ball *player-one*))
   (when (player-collision-p ball *player-two*)
-    (if (< 0 (ball-x-vel ball))
-        (setf (ball-x-vel ball)
-              (- (+ (ball-x-vel ball) *ball-x-vel-inc*)))))
+    (ball-vel-update ball *player-two*))
 
   ;; Detect if we score
   (when (and (> (get-court-bot) (ball-x-pos ball))
@@ -256,6 +281,8 @@
   (gl:load-identity))
 
 ;; TODO: Fix this to randomize a starting velocity for ball
+(defvar *do-time* t)
+
 (defun init ()
   (setf *fps*    0)
   (setf *frames* 0)
@@ -275,9 +302,20 @@
     (setf *frames* 0)
     (setf *time* (glfw:get-time))))
 
+(defun execute-with-time (func &optional (args nil))
+  "Wrapper function to execute given function in a timed environment."
+  (when *do-time*
+    (format t "Executing with time: ~A~%" func)
+    (if args
+        (time (funcall func args))
+        (time (funcall func))))
+  (if args
+      (funcall func args)
+      (funcall func)))
+
 (defun main ()
   "MONSTER MAIN FUNC"
-  (init)
+  (execute-with-time #'init)
   (glfw:with-init-window (:title  "PLONG"
                                   :width  *width*
                                   :height *height*)
@@ -288,11 +326,21 @@
     (gl:clear-color                 0 0 0 0)
     (set-viewport                   *width* *height*)
     (setf *time* (glfw:get-time))
-    (loop until (glfw:window-should-close-p)
-       do (update-time)
-       do (render)
-       do (update-ball *ball*)
-       do (update)
-       do (glfw:swap-buffers)
-       do (glfw:poll-events)
-       do (swank-up))))
+    (if *do-time*
+        (loop until (glfw:window-should-close-p)
+           do (execute-with-time #'update-time)
+           do (execute-with-time #'render)
+           do (execute-with-time #'update-ball *ball*)
+           do (execute-with-time #'update)
+           do (execute-with-time #'glfw:swap-buffers)
+           do (execute-with-time #'glfw:poll-events)
+           do (swank-up)
+           do (setf *do-time* nil))
+        (loop until (glfw:window-should-close-p)
+           do (update-time)
+           do (render)
+           do (update-ball *ball*)
+           do (update)
+           do (glfw:swap-buffers)
+           do (glfw:poll-events)
+           do (swank-up)))))
