@@ -4,6 +4,10 @@
 
 ;;; "plong" goes here. Hacks and glory await!
 
+;; NOTE: Uncomment below to optimize during normal run
+;;       Testing showed ~2x speed increase in render code...
+;;;;(declaim (optimize speed))
+
 (defvar *debug* nil)
 
 (defvar *victory* "")
@@ -85,6 +89,9 @@
                     (/ *player-height* 2))))
     (gl:rect x-start y-start x-end y-end)))
 
+(defvar *player-one-action* nil)
+(defvar *player-two-action* nil)
+
 ;; TODO: Fix error where going off board locks your pad
 (defun player-up (player)
   (let ((y-top (+ (player-y-pos player) (/ *player-height* 2))))
@@ -98,17 +105,22 @@
 
 (glfw:def-key-callback key-callback (window key scancode action mod-keys)
   (declare (ignore window scancode mod-keys))
-  (when (or (eq action :press) (eq action :repeat))
+  (if (eq action :press)
     (case key
       (:escape (glfw:set-window-should-close))
-      (:up     (player-up   *player-two*))
-      (:down   (player-down *player-two*))
-      (:w      (player-up   *player-one*))
-      (:s      (player-down *player-one*))
-      (:q  (setf *debug* (not *debug*)))
+      (:up     (setf *player-two-action* #'player-up))
+      (:down   (setf *player-two-action* #'player-down))
+      (:w      (setf *player-one-action* #'player-up))
+      (:s      (setf *player-one-action* #'player-down))
+      (:y      (setf *debug* (not *debug*)))
       (:enter  (when *game-over*
                  (setf *game-over* (not *game-over*))
-                 (init))))))
+                 (init))))
+    (cond
+      ((or (eq :up key) (eq :down key))
+       (setf *player-two-action* nil))
+      ((or (eq :w key) (eq :s key))
+       (setf *player-one-action* nil)))))
 
 (glfw:def-window-size-callback window-size-callback (window w h)
   (declare (ignore window))
@@ -127,6 +139,7 @@
             *ball-vel-default*)))
 
 (defun update ()
+  (update-players)
   (when (>= (player-score *player-one*) *max-score*)
     (setf *victory* "Player One Wins!~%Press Enter to Restart~%Press ESC to Exit")
     (setf *game-over* t)
@@ -139,6 +152,12 @@
     (reset-ball *ball*)
     (setf (ball-x-vel *ball*) 0.0)
     (setf (ball-y-vel *ball*) 0.0)))
+
+(defun update-players ()
+  (when *player-one-action*
+    (funcall *player-one-action* *player-one*))
+  (when *player-two-action*
+    (funcall *player-two-action* *player-two*)))
 
 (defun player-collision-p (ball player)
   (let ((y-top   (- (player-y-pos player) (/ *player-height* 2)))
@@ -319,6 +338,7 @@
   (glfw:with-init-window (:title  "PLONG"
                                   :width  *width*
                                   :height *height*)
+    ;; OpenGL/GLUT Init
     (glut:init)
     (setf %gl:*gl-get-proc-address* #'%glfw:get-proc-address)
     (glfw:set-key-callback          'key-callback)
@@ -326,6 +346,8 @@
     (gl:clear-color                 0 0 0 0)
     (set-viewport                   *width* *height*)
     (setf *time* (glfw:get-time))
+    ;; Primary Loop with debug code
+    ;; TODO: Possibly pull this into a tail-recursive function?
     (if *do-time*
         (loop until (glfw:window-should-close-p)
            do (execute-with-time #'update-time)
