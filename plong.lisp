@@ -22,6 +22,7 @@
 (defvar *player-height* 40)
 (defvar *player-width*  2)
 
+(defvar *ball-length* 5)
 (defvar *ball-width*  2)
 (defvar *ball-height* 2)
 
@@ -34,6 +35,7 @@
 (defvar *frames* 0)
 (defvar *time*   0)
 
+;; TODO: Make these macros?
 (defun get-court-left ()
   (- (/ *court-width* 2)))
 
@@ -47,11 +49,13 @@
   (/ *court-height* 2))
 
 (defstruct player
+  "Player structure. Provides both <x,y> positions and score."
   (score 0 :type integer)
   (x-pos 0 :type integer)
   (y-pos 0 :type integer))
 
 (defstruct ball
+  "Ball structure. Provides both <x,y> positions and <x,y> velocities."
   (x-pos 0.0 :type float)
   (y-pos 0.0 :type float)
   (x-vel 0.0 :type float)
@@ -65,9 +69,13 @@
 (defvar *player-two* (make-player
                       :x-pos (- (get-court-right) (/ *player-width* 2))))
 
+;; TODO: Add ball trail.
 (defvar *ball* (make-ball))
+(defvar *balls* nil)
 
-(defun draw-ball (ball)
+(defun draw-ball (ball &key (r 1) (g 1) (b 1) (op 1))
+  "Draw input ball."
+  (gl:color r g b op)
   (let ((x-start (- (ball-x-pos ball)
                     (/ *ball-width* 2)))
         (x-end   (+ (ball-x-pos ball)
@@ -78,7 +86,14 @@
                     (/ *ball-height* 2))))
     (gl:rect x-start y-start x-end y-end)))
 
+(defun draw-balls (balls)
+  (let ((op 1))
+    (loop for ball in balls
+       do (draw-ball ball :op op)
+       do (setf op (- op 0.25)))))
+
 (defun draw-player (player)
+  "Draw input layer pad."
   (let ((x-start (- (player-x-pos player)
                     (/ *player-width* 2)))
         (x-end   (+ (player-x-pos player)
@@ -92,13 +107,14 @@
 (defvar *player-one-action* nil)
 (defvar *player-two-action* nil)
 
-;; TODO: Fix error where going off board locks your pad
 (defun player-up (player)
+  "Adjust input player up. Maxes at field boundary"
   (let ((y-top (+ (player-y-pos player) (/ *player-height* 2))))
     (when (> (get-court-top) y-top)
       (setf (player-y-pos player) (+ (player-y-pos player) 2)))))
 
 (defun player-down (player)
+  "Adjust input player position down. Maxes at field boundary"
   (let ((y-bot (- (player-y-pos player) (/ *player-height* 2))))
     (when (< (get-court-bot) y-bot)
       (setf (player-y-pos player) (- (player-y-pos player) 2)))))
@@ -127,6 +143,7 @@
   (set-viewport w h))
 
 (defun reset-ball (ball)
+  "Clear ball positions and reset original velocities (adjusted for scoring player)"
   (setf (ball-x-pos ball) 0.0)
   (setf (ball-y-pos ball) 0.0)
   (setf (ball-x-vel ball)
@@ -139,6 +156,7 @@
             *ball-vel-default*)))
 
 (defun update ()
+  "Primary update routine."
   (update-players)
   (when (>= (player-score *player-one*) *max-score*)
     (setf *victory* "Player One Wins!~%Press Enter to Restart~%Press ESC to Exit")
@@ -154,12 +172,14 @@
     (setf (ball-y-vel *ball*) 0.0)))
 
 (defun update-players ()
+  "Update both players. Relies on global states :*"
   (when *player-one-action*
     (funcall *player-one-action* *player-one*))
   (when *player-two-action*
     (funcall *player-two-action* *player-two*)))
 
 (defun player-collision-p (ball player)
+  "Detect if input ball is colliding with current player pad."
   (let ((y-top   (- (player-y-pos player) (/ *player-height* 2)))
         (y-bot   (+ (player-y-pos player) (/ *player-height* 2)))
         (x-left  (- (player-x-pos player) (/ *player-width* 2)))
@@ -201,6 +221,14 @@
     (setf (ball-x-vel ball) x-inc)
     (setf (ball-y-vel ball) y-inc)))
 
+(defun update-balls (ball balls)
+  (update-ball ball)
+  (let ((len (length balls)))
+    (if (<= len *ball-length*)
+        (push ball balls)
+        (let ((new-balls (cons ball (subseq balls 0 (- len 1)))))
+          (setf balls new-balls)))))
+
 (defun update-ball (ball)
   ;; Update ball position
   (setf (ball-y-pos ball)
@@ -233,6 +261,7 @@
     (incf (player-score *player-one*))))
 
 (defun swank-up ()
+  "Allow connected REPL to update."
   (swank::handle-requests swank::*emacs-connection* t))
 
 (defun gl-print (out &key (x 0) (y 0) (r 255) (g 255) (b 255))
@@ -241,7 +270,9 @@
   (%gl:raster-pos-2d x y)
   (cl-glut:bitmap-string glut:+bitmap-helvetica-18+ out))
 
+;; TODO: Pull score positions into the player structure?
 (defun draw-score (p1 p2)
+  "Draw the player's scores."
   (gl-print (format nil "~d" p1)
             :x (/ (get-court-left) 2)
             :y (+ (/ (get-court-bot) 2) (/ (get-court-bot) 4)))
@@ -250,6 +281,7 @@
             :y (+ (/ (get-court-bot) 2) (/ (get-court-bot) 4))))
 
 (defun draw-field ()
+  "Draw our standard field."
   (gl:color 0 1 0)
   (gl:rect (get-court-left) (get-court-bot) (get-court-right) (get-court-top))
   (gl:color 0.8 0.8 0.8)
@@ -267,7 +299,7 @@
   (gl:color 1 1 1)
   (draw-player *player-one*)
   (draw-player *player-two*)
-  (draw-ball *ball*))
+  (draw-balls *balls*))
 
 (defun draw-victory ()
   (gl-print (format nil *victory*)
@@ -321,7 +353,7 @@
     (setf *frames* 0)
     (setf *time* (glfw:get-time))))
 
-(defun execute-with-time (func &optional (args nil))
+(defun execute-with-time (func &rest args)
   "Wrapper function to execute given function in a timed environment."
   (when *do-time*
     (format t "Executing with time: ~A~%" func)
@@ -347,12 +379,11 @@
     (set-viewport                   *width* *height*)
     (setf *time* (glfw:get-time))
     ;; Primary Loop with debug code
-    ;; TODO: Possibly pull this into a tail-recursive function?
     (if *do-time*
         (loop until (glfw:window-should-close-p)
            do (execute-with-time #'update-time)
            do (execute-with-time #'render)
-           do (execute-with-time #'update-ball *ball*)
+           do (execute-with-time #'update-balls *ball* *balls*)
            do (execute-with-time #'update)
            do (execute-with-time #'glfw:swap-buffers)
            do (execute-with-time #'glfw:poll-events)
@@ -361,7 +392,7 @@
         (loop until (glfw:window-should-close-p)
            do (update-time)
            do (render)
-           do (update-ball *ball*)
+           do (update-balls *ball* *balls*)
            do (update)
            do (glfw:swap-buffers)
            do (glfw:poll-events)
